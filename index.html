@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mô phỏng EPP - Điểm Cân Bằng Áp Suất</title>
+  
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+
+    // --- CÁC ICON SVG TỰ TẠO (Thay thế cho Lucide React) ---
+    const Icons = {
+      Wind: ({ size = 24, className = "" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"/></svg>
+      ),
+      Activity: ({ size = 24, className = "" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      ),
+      AlertTriangle: ({ size = 24, className = "" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      ),
+      Info: ({ size = 24, className = "" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      ),
+      ArrowRight: ({ size = 24, className = "" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+      ),
+      ShieldCheck: ({ size = 24, className = "" }) => (
+        <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+      )
+    };
+    const { Wind, Activity, AlertTriangle, Info, ArrowRight, ShieldCheck } = Icons;
+
+    // --- COMPONENT CHÍNH ---
+    function EPPSimulator() {
+      const [lungVolume, setLungVolume] = useState('mid');
+      const [force, setForce] = useState(20);
+      const [pep, setPep] = useState(0);
+      const [compression, setCompression] = useState(false);
+      const [copdLevel, setCopdLevel] = useState('none');
+      const [breathPhase, setBreathPhase] = useState('exhale');
+
+      const triggerInhale = () => {
+        setBreathPhase('inhale');
+        setForce(0);
+        setLungVolume('high');
+      };
+
+      const triggerExhale = () => {
+        setBreathPhase('exhale');
+        if (force === 0) setForce(80);
+      };
+
+      const eppLogic = useMemo(() => {
+        let basePos = 80; 
+        if (lungVolume === 'high') basePos += 15;
+        if (lungVolume === 'low') basePos -= 30; 
+
+        let forceEffect = force * 0.4;
+        if (copdLevel === 'mild') forceEffect = force * 0.55; 
+        if (copdLevel === 'severe') forceEffect = force * 0.7; 
+        basePos -= forceEffect;
+
+        if (compression) basePos -= 25;
+        basePos += (pep * 2.5);
+
+        let finalPos = Math.max(10, Math.min(95, basePos));
+
+        let isCollapsed = false;
+        if (copdLevel === 'mild' && finalPos < 50 && pep < 5 && force > 60) {
+          isCollapsed = true;
+        } else if (copdLevel === 'severe' && finalPos < 50 && pep < 8 && force > 20) {
+          isCollapsed = true;
+        }
+
+        let clearanceEffect = 'none';
+        if (!isCollapsed && finalPos >= 15 && finalPos <= 45 && force > 30) {
+          clearanceEffect = 'high';
+        } else if (!isCollapsed && finalPos > 45 && force > 50) {
+          clearanceEffect = 'proximal_only';
+        }
+
+        return { pos: finalPos, isCollapsed, clearanceEffect };
+      }, [lungVolume, force, pep, compression, copdLevel]);
+
+      const volumes = useMemo(() => {
+        let rv = 25;
+        if (copdLevel === 'mild') rv = 45;
+        if (copdLevel === 'severe') rv = 65;
+
+        const vt = 15;
+        let vtBottom = 0;
+        if (lungVolume === 'low') vtBottom = rv + 5;
+        if (lungVolume === 'mid') vtBottom = rv + ((100 - rv - vt) / 2);
+        if (lungVolume === 'high') vtBottom = 100 - vt - 5;
+
+        if (copdLevel !== 'none' && vtBottom < rv) {
+          vtBottom = rv; 
+        }
+
+        const erv = Math.max(0, vtBottom - rv);
+        const irv = Math.max(0, 100 - vtBottom - vt);
+
+        return { rv, erv, vt, irv };
+      }, [copdLevel, lungVolume]);
+
+      const renderAirway = () => {
+        const eppX = 100 + (eppLogic.pos / 100) * 600; 
+        const mouthX = 700;
+        const alveolusX = 100;
+        const centerY = 150;
+        const baseRadius = 40;
+        
+        let narrowedRadius = baseRadius; 
+        if (force > 0 || breathPhase === 'exhale') {
+          narrowedRadius = baseRadius * 0.4;
+          if (eppLogic.isCollapsed) narrowedRadius = 2;
+        }
+        
+        const pathStyle = { transition: 'all 1s ease-in-out' };
+        
+        const topPath = `M ${alveolusX} ${centerY - baseRadius} 
+                         C ${eppX - 50} ${centerY - baseRadius}, 
+                           ${eppX - 30} ${centerY - narrowedRadius}, 
+                           ${eppX} ${centerY - narrowedRadius}
+                         C ${eppX + 30} ${centerY - narrowedRadius}, 
+                           ${eppX + 50} ${centerY - baseRadius}, 
+                           ${mouthX} ${centerY - baseRadius}`;
+
+        const bottomPath = `M ${alveolusX} ${centerY + baseRadius} 
+                             C ${eppX - 50} ${centerY + baseRadius}, 
+                               ${eppX - 30} ${centerY + narrowedRadius}, 
+                               ${eppX} ${centerY + narrowedRadius}
+                             C ${eppX + 30} ${centerY + narrowedRadius}, 
+                               ${eppX + 50} ${centerY + baseRadius}, 
+                               ${mouthX} ${centerY + baseRadius}`;
+
+        return (
+          <g>
+            <circle 
+              cx={alveolusX} cy={centerY} 
+              r={eppLogic.isCollapsed ? 65 : (lungVolume === 'high' ? 70 : lungVolume === 'low' ? 35 : 55)} 
+              fill={breathPhase === 'inhale' ? '#93c5fd' : '#fca5a5'} 
+              opacity="0.5" style={{ transition: 'all 1s ease-in-out' }}
+            />
+            {eppLogic.isCollapsed && force > 0 && (
+              <text x={alveolusX} y={centerY} textAnchor="middle" fill="#991b1b" fontSize="12" fontWeight="bold">BẪY KHÍ</text>
+            )}
+
+            <path d={topPath} fill="none" stroke={copdLevel !== 'none' ? "#d97706" : "#64748b"} strokeWidth={copdLevel !== 'none' ? "4" : "8"} style={pathStyle} />
+            <path d={bottomPath} fill="none" stroke={copdLevel !== 'none' ? "#d97706" : "#64748b"} strokeWidth={copdLevel !== 'none' ? "4" : "8"} style={pathStyle} />
+            <path d={`${topPath} L ${mouthX} ${centerY+baseRadius} ${bottomPath.replace('M', 'L')} Z`} fill="#f1f5f9" style={pathStyle} />
+
+            <line x1="400" y1="50" x2="400" y2="250" stroke="#cbd5e1" strokeWidth="2" strokeDasharray="5,5" />
+            <text x="250" y="240" textAnchor="middle" fill="#64748b" fontSize="12">Đường thở nhỏ (Không sụn)</text>
+            <text x="550" y="240" textAnchor="middle" fill="#64748b" fontSize="12">Phế quản lớn (Có sụn)</text>
+
+            {(force > 0 || breathPhase === 'exhale') && !eppLogic.isCollapsed && (
+              <g style={{ transition: 'all 0.5s ease' }}>
+                <line x1={eppX} y1={centerY - 80} x2={eppX} y2={centerY + 80} stroke="#ef4444" strokeWidth="3" opacity="0.7" style={pathStyle} />
+                <rect x={eppX - 20} y={centerY - 100} width="40" height="20" rx="4" fill="#ef4444" style={pathStyle} />
+                <text x={eppX} y={centerY - 86} textAnchor="middle" fill="white" fontSize="12" fontWeight="bold" style={pathStyle}>EPP</text>
+              </g>
+            )}
+
+            <g opacity="0.8">
+              <circle cx="200" cy={centerY - 30} r="8" fill="#84cc16" />
+              <circle cx="230" cy={centerY + 25} r="10" fill="#84cc16" />
+              <circle cx="280" cy={centerY - 28} r="6" fill="#84cc16" />
+              <circle cx="330" cy={centerY + 32} r="9" fill="#84cc16" />
+            </g>
+
+            {breathPhase === 'inhale' && (
+               <g>
+                 <path d={`M 650 ${centerY} L 150 ${centerY}`} stroke="#0ea5e9" strokeWidth="4" strokeDasharray="15,15" fill="none" opacity="0.6">
+                     <animate attributeName="stroke-dashoffset" from="150" to="0" dur="1s" repeatCount="indefinite" />
+                 </path>
+                 <text x="500" y={centerY - 20} fill="#0ea5e9" fontSize="12" fontWeight="bold" opacity="0.8">KHÍ ĐI VÀO</text>
+               </g>
+            )}
+
+            {!eppLogic.isCollapsed && (force > 0 || breathPhase === 'exhale') && (
+              <g>
+                {eppLogic.clearanceEffect === 'high' ? (
+                  <g stroke="#0ea5e9" strokeWidth="2" fill="none" opacity="0.6">
+                    <path d={`M ${eppX-20} ${centerY} Q ${eppX+30} ${centerY-40} ${eppX+60} ${centerY} T ${eppX+140} ${centerY}`} className="animate-pulse" />
+                    <path d={`M ${eppX-20} ${centerY} Q ${eppX+30} ${centerY+40} ${eppX+60} ${centerY} T ${eppX+140} ${centerY}`} className="animate-pulse" />
+                    <text x={eppX+40} y={centerY-20} fill="#0ea5e9" fontSize="12" fontWeight="bold">LỰC XÉ (SHEAR FORCE) BÓC ĐÀM!</text>
+                  </g>
+                ) : (
+                  <path d={`M 150 ${centerY} L 650 ${centerY}`} stroke="#94a3b8" strokeWidth="4" strokeDasharray="10,10" fill="none" opacity="0.5">
+                     <animate attributeName="stroke-dashoffset" from="100" to="0" dur={`${300/Math.max(10, force)}s`} repeatCount="indefinite" />
+                  </path>
+                )}
+              </g>
+            )}
+
+            {(force > 0 || breathPhase === 'exhale') && (
+              <g fill="#9333ea" opacity={0.5 + (force/200) + (compression ? 0.3 : 0)}>
+                <path d={`M ${eppX} 40 L ${eppX-10} 20 L ${eppX+10} 20 Z`} style={pathStyle} />
+                <path d={`M ${eppX} 260 L ${eppX-10} 280 L ${eppX+10} 280 Z`} style={pathStyle} />
+                {compression && <text x={eppX} y={15} textAnchor="middle" fill="#9333ea" fontSize="12" fontWeight="bold" style={pathStyle}>NÉN ÉP NGỰC!</text>}
+              </g>
+            )}
+
+            {pep > 0 && (
+               <g transform="translate(680, 150)">
+                 <path d="M 0 -20 L -20 0 L 0 20 Z" fill="#10b981" />
+                 <text x="-30" y="4" textAnchor="end" fill="#10b981" fontSize="12" fontWeight="bold">PEP {pep} cmH2O</text>
+               </g>
+            )}
+          </g>
+        );
+      };
+
+      return (
+        <div className="min-h-screen bg-slate-50 p-4 md:p-8 font-sans text-slate-800">
+          <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="bg-slate-800 p-6 text-white flex items-center justify-between">
+              <div>
+                <h1 className="text-2xl font-bold flex items-center gap-2">
+                  <Wind className="text-cyan-400" size={28} />
+                  Trình mô phỏng Điểm Cân Bằng Áp Suất (EPP)
+                </h1>
+                <p className="text-slate-300 mt-1 text-sm">
+                  Trực quan hóa sinh lý đường thở, Dẫn lưu tự sinh (DA) và cơ chế bù trừ ở bệnh nhân COPD.
+                </p>
+              </div>
+              <Activity size={48} className="text-slate-600 opacity-50" />
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-0">
+              <div className="p-6 border-r border-slate-100 bg-slate-50">
+                <div className="mb-6 bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+                  <div className="flex gap-2">
+                    <button onClick={triggerInhale} className={`flex-1 py-3 rounded-lg font-bold flex flex-col items-center justify-center gap-1 transition-all ${breathPhase === 'inhale' ? 'bg-blue-100 text-blue-700 border-2 border-blue-400 shadow-inner' : 'bg-slate-50 text-slate-500 border border-slate-200 hover:bg-blue-50 hover:text-blue-600'}`}>
+                      <Wind size={20} />
+                      <span>HÍT VÀO</span>
+                    </button>
+                    <button onClick={triggerExhale} className={`flex-1 py-3 rounded-lg font-bold flex flex-col items-center justify-center gap-1 transition-all ${breathPhase === 'exhale' ? 'bg-emerald-100 text-emerald-700 border-2 border-emerald-400 shadow-inner' : 'bg-slate-50 text-slate-500 border border-slate-200 hover:bg-emerald-50 hover:text-emerald-600'}`}>
+                      <Activity size={20} />
+                      <span>THỞ RA</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mb-6">
+                  <label className="block text-sm font-medium mb-2 text-slate-700">1. Thể tích phổi (Áp lực phế nang)</label>
+                  <div className="flex gap-2">
+                    {['low', 'mid', 'high'].map((vol) => (
+                      <button key={vol} onClick={() => { setBreathPhase('exhale'); setLungVolume(vol); }} className={`flex-1 py-2 text-sm rounded-md border transition-colors ${lungVolume === vol ? 'bg-blue-100 border-blue-400 text-blue-700 font-semibold' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
+                        {vol === 'low' ? 'Thấp' : vol === 'mid' ? 'Bình thường' : 'Cao'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mb-6">
+                  <label className="block text-sm font-medium mb-2 text-slate-700 flex justify-between">
+                    <span>2. Mức độ gắng sức</span>
+                    <span className="text-blue-600 font-bold">{force}%</span>
+                  </label>
+                  <input type="range" min="0" max="100" value={force} onChange={(e) => { setBreathPhase('exhale'); setForce(Number(e.target.value)); }} className="w-full accent-blue-600" />
+                </div>
+
+                <div className="mb-6 bg-purple-50 p-3 rounded-lg border border-purple-100">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" checked={compression} onChange={(e) => { setBreathPhase('exhale'); setCompression(e.target.checked); }} className="w-4 h-4 accent-purple-600 rounded" />
+                    <span className="text-sm font-medium text-purple-900">Kỹ thuật Nén ép lồng ngực</span>
+                  </label>
+                </div>
+
+                <div className="mb-6 bg-emerald-50 p-3 rounded-lg border border-emerald-100">
+                  <label className="block text-sm font-medium mb-2 text-emerald-900 flex justify-between">
+                    <span>Áp lực Miệng (Thở PEP/Chúm môi)</span>
+                    <span className="text-emerald-700 font-bold">{pep} cmH2O</span>
+                  </label>
+                  <input type="range" min="0" max="20" value={pep} onChange={(e) => setPep(Number(e.target.value))} className="w-full accent-emerald-600" />
+                </div>
+
+                <div className="mt-8 pt-4 border-t border-slate-300">
+                  <label className="block text-sm font-bold mb-3 text-slate-800 flex items-center gap-2">Phân độ COPD</label>
+                  <div className="flex flex-col gap-2">
+                    <button onClick={() => setCopdLevel('none')} className={`p-3 rounded-lg border text-left transition-colors flex items-center gap-3 ${copdLevel === 'none' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${copdLevel === 'none' ? 'border-white' : 'border-slate-400'}`}>
+                         {copdLevel === 'none' && <div className="w-2 h-2 bg-white rounded-full"></div>}
+                      </div>
+                      <span className="font-semibold text-sm">Phổi bình thường</span>
+                    </button>
+                    <button onClick={() => { setBreathPhase('exhale'); setCopdLevel('mild'); }} className={`p-3 rounded-lg border text-left transition-colors flex items-center gap-3 ${copdLevel === 'mild' ? 'bg-orange-100 border-orange-400 text-orange-900' : 'bg-orange-50 border-orange-200 text-orange-800 hover:bg-orange-100 opacity-70'}`}>
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${copdLevel === 'mild' ? 'border-orange-600' : 'border-orange-400'}`}>
+                         {copdLevel === 'mild' && <div className="w-2 h-2 bg-orange-600 rounded-full"></div>}
+                      </div>
+                      <span className="font-semibold text-sm">COPD Nhẹ</span>
+                    </button>
+                    <button onClick={() => { setBreathPhase('exhale'); setCopdLevel('severe'); }} className={`p-3 rounded-lg border text-left transition-colors flex items-center gap-3 ${copdLevel === 'severe' ? 'bg-red-100 border-red-400 text-red-900' : 'bg-red-50 border-red-200 text-red-800 hover:bg-red-100 opacity-70'}`}>
+                      <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${copdLevel === 'severe' ? 'border-red-600' : 'border-red-400'}`}>
+                         {copdLevel === 'severe' && <div className="w-2 h-2 bg-red-600 rounded-full"></div>}
+                      </div>
+                      <span className="font-semibold text-sm">COPD Nặng</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-6 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+                  <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center justify-center gap-2">
+                    <Activity size={16} className="text-blue-500" /> Biểu đồ Thể tích Phổi
+                  </h3>
+                  <div className="flex justify-center h-48 w-full px-4">
+                    <div className="w-full max-w-[200px] bg-slate-50 rounded-lg flex flex-col relative border border-slate-300 overflow-hidden shadow-inner">
+                      <div className="w-full bg-sky-50 relative transition-all duration-700 flex items-center justify-center border-b border-sky-100" style={{ height: `${volumes.irv}%` }}>
+                        {volumes.irv > 5 && <span className="text-xs font-bold text-sky-600">IRV</span>}
+                      </div>
+                      <div className="w-full bg-blue-500 relative transition-all duration-700 flex items-center justify-center shadow-md z-10" style={{ height: `${volumes.vt}%` }}>
+                        <span className="text-xs font-bold text-white">VT</span>
+                      </div>
+                      <div className="w-full bg-sky-200 relative transition-all duration-700 flex items-center justify-center border-t border-sky-300" style={{ height: `${volumes.erv}%` }}>
+                        {volumes.erv > 5 && <span className="text-xs font-bold text-sky-800">ERV</span>}
+                      </div>
+                      <div className="w-full bg-red-200 relative transition-all duration-700 flex items-center justify-center border-t border-red-400" style={{ height: `${volumes.rv}%` }}>
+                        <span className="text-xs font-bold text-red-900">RV</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="col-span-2 flex flex-col relative">
+                <div className="flex-1 bg-white p-4 relative border-b border-slate-100 min-h-[350px] flex items-center justify-center overflow-x-auto">
+                  <div className="absolute top-4 left-1/2 -translate-x-1/2 flex gap-2 font-bold px-4 py-2 rounded-full shadow-sm z-10 transition-colors duration-500 bg-white border border-slate-200">
+                    {breathPhase === 'inhale' && <span className="text-blue-500 flex items-center gap-2"><Wind className="animate-pulse" size={18}/> ĐANG HÍT VÀO... (Đường thở mở rộng)</span>}
+                    {breathPhase === 'exhale' && <span className="text-emerald-600 flex items-center gap-2"><Activity className="animate-pulse" size={18}/> ĐANG THỞ RA... (Xuất hiện EPP)</span>}
+                  </div>
+
+                  <svg width="800" height="300" viewBox="0 0 800 300" className="max-w-full drop-shadow-sm mt-8">
+                    <defs>
+                      <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                        <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#f1f5f9" strokeWidth="1"/>
+                      </pattern>
+                      <marker id="arrow" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 0 L 10 5 L 0 10 z" fill="#cbd5e1" />
+                      </marker>
+                    </defs>
+                    <rect width="100%" height="100%" fill="url(#grid)" />
+                    <text x="50" y="30" fill="#64748b" fontSize="14" fontWeight="bold">PHẾ NANG</text>
+                    <text x="680" y="30" fill="#64748b" fontSize="14" fontWeight="bold">MIỆNG</text>
+                    <path d="M 120 25 L 670 25" stroke="#cbd5e1" strokeWidth="2" strokeDasharray="4,4" fill="none" markerEnd="url(#arrow)"/>
+                    {renderAirway()}
+                  </svg>
+                </div>
+
+                <div className="p-6 bg-white min-h-[220px]">
+                  <h3 className="text-lg font-bold mb-3 flex items-center gap-2">
+                    <Info className="text-blue-500" /> Phân tích Lâm sàng (Thì Thở Ra):
+                  </h3>
+                  <div className="space-y-4">
+                    {breathPhase === 'inhale' ? (
+                       <div className="text-center text-slate-500 italic mt-4 p-4">
+                          (Không có phân tích lâm sàng về EPP trong thì hít vào do áp lực màng phổi đang âm, đường thở được nở rộng cực đại)
+                       </div>
+                    ) : (
+                      <React.Fragment>
+                        {eppLogic.isCollapsed ? (
+                          <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r flex items-start gap-3">
+                            <div className="mt-1"><AlertTriangle className="text-red-500" /></div>
+                            <div>
+                              <h4 className="font-bold text-red-900">CẢNH BÁO: ĐÓNG SẬP ĐƯỜNG THỞ (AIRWAY COLLAPSE)</h4>
+                              <p className="text-sm text-red-800 mt-1">
+                                Ở bệnh nhân <strong>{copdLevel === 'mild' ? 'COPD Nhẹ' : 'COPD Nặng'}</strong>, sự kết hợp giữa "lực đẩy ra" yếu và "lực cản đường" lớn khiến EPP trượt nhanh về phía phế nang. 
+                                {copdLevel === 'severe' ? ' Do mức độ nặng, chỉ cần một nỗ lực thở ra nhỏ cũng đủ khiến áp lực màng phổi đè sập đường thở.' : ' Ở mức độ nhẹ, cần phải gắng sức mạnh mới xảy ra hiện tượng sập.'}
+                                <strong> Khí bị bẫy lại bên trong, gây quá căng lồng ngực.</strong>
+                              </p>
+                              <div className="mt-2 text-sm font-semibold text-red-900 flex items-center gap-1">
+                                <ArrowRight size={16}/> Giải pháp: Tăng thanh "Áp lực miệng (PEP)" để hãm phanh EPP!
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <React.Fragment>
+                            <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                              <p className="text-sm text-slate-700">
+                                <strong className="text-slate-900">Vị trí EPP hiện tại: </strong> 
+                                Đang nằm ở {eppLogic.pos < 50 ? 'vùng tiểu phế quản xa (không sụn)' : 'vùng phế quản lớn (có sụn)'}.
+                              </p>
+                            </div>
+                            {eppLogic.clearanceEffect === 'high' && (
+                              <div className="bg-sky-50 border-l-4 border-sky-400 p-3 rounded-r flex items-center gap-3">
+                                <Wind className="text-sky-500 shrink-0" />
+                                <p className="text-sm text-sky-900">
+                                  <strong>Tạo lực xé (Shear Force) thành công!</strong> EPP lùi đúng vào vị trí có đàm, làm tăng vận tốc dòng khí, sinh ra <strong>lực xé bề mặt</strong> cạo lớp đàm mang ra ngoài.
+                                </p>
+                              </div>
+                            )}
+                            {copdLevel !== 'none' && pep > 5 && !eppLogic.isCollapsed && (
+                              <div className="bg-emerald-50 border-l-4 border-emerald-400 p-3 rounded-r flex items-center gap-3">
+                                <ShieldCheck className="text-emerald-500 shrink-0" />
+                                <p className="text-sm text-emerald-900">
+                                  <strong>Hãm phanh EPP thành công:</strong> Bệnh nhân COPD thở mím môi (PEP) theo bản năng để tạo áp suất ngược (Back-pressure). Áp suất này bù trừ lại lực cản đường, <strong>"hãm" tốc độ di chuyển của EPP</strong> và đẩy nó ra xa phế nang, giữ cho đường thở không bị xẹp.
+                                </p>
+                              </div>
+                            )}
+                          </React.Fragment>
+                        )}
+                      </React.Fragment>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Render Component ra thẻ div có id="root"
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<EPPSimulator />);
+  </script>
+</body>
+</html>
