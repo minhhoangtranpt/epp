@@ -255,7 +255,7 @@
                 </div>
 
                 <div className="mb-6">
-                  <label className="block text-sm font-medium mb-2 text-slate-700">1. Thể tích phổi (Áp lực phế nang)</label>
+                  <label className="block text-sm font-medium mb-2 text-slate-700">1. Thể tích phổi (Áp lực phế nang thì thở ra)</label>
                   <div className="flex gap-2">
                     {['low', 'mid', 'high'].map((vol) => (
                       <button key={vol} onClick={() => { setBreathPhase('exhale'); setLungVolume(vol); }} className={`flex-1 py-2 text-sm rounded-md border transition-colors ${lungVolume === vol ? 'bg-blue-100 border-blue-400 text-blue-700 font-semibold' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
@@ -276,20 +276,20 @@
                 <div className="mb-6 bg-purple-50 p-3 rounded-lg border border-purple-100">
                   <label className="flex items-center gap-2 cursor-pointer">
                     <input type="checkbox" checked={compression} onChange={(e) => { setBreathPhase('exhale'); setCompression(e.target.checked); }} className="w-4 h-4 accent-purple-600 rounded" />
-                    <span className="text-sm font-medium text-purple-900">Kỹ thuật Nén ép lồng ngực</span>
+                    <span className="text-sm font-medium text-purple-900">Nén ép lồng ngực</span>
                   </label>
                 </div>
 
                 <div className="mb-6 bg-emerald-50 p-3 rounded-lg border border-emerald-100">
                   <label className="block text-sm font-medium mb-2 text-emerald-900 flex justify-between">
-                    <span>Áp lực Miệng (Thở PEP/Chúm môi)</span>
+                    <span>Áp lực Miệng </span>
                     <span className="text-emerald-700 font-bold">{pep} cmH2O</span>
                   </label>
                   <input type="range" min="0" max="20" value={pep} onChange={(e) => setPep(Number(e.target.value))} className="w-full accent-emerald-600" />
                 </div>
 
                 <div className="mt-8 pt-4 border-t border-slate-300">
-                  <label className="block text-sm font-bold mb-3 text-slate-800 flex items-center gap-2">Phân độ COPD</label>
+                  <label className="block text-sm font-bold mb-3 text-slate-800 flex items-center gap-2">Phân loại</label>
                   <div className="flex flex-col gap-2">
                     <button onClick={() => setCopdLevel('none')} className={`p-3 rounded-lg border text-left transition-colors flex items-center gap-3 ${copdLevel === 'none' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}>
                       <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${copdLevel === 'none' ? 'border-white' : 'border-slate-400'}`}>
