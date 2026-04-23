@@ -13,7 +13,6 @@
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   
   <style>
-    /* Làm gọn thanh cuộn cho giao diện sạch sẽ */
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
@@ -26,7 +25,6 @@
   <script type="text/babel">
     const { useState, useEffect, useMemo } = React;
 
-    // --- CÁC ICON SVG TỰ TẠO (Thay thế cho Lucide React) ---
     const Icons = {
       Wind: ({ size = 24, className = "" }) => (
         <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"/></svg>
@@ -49,7 +47,6 @@
     };
     const { Wind, Activity, AlertTriangle, Info, ArrowRight, ShieldCheck } = Icons;
 
-    // --- COMPONENT CHÍNH ---
     function EPPSimulator() {
       const [lungVolume, setLungVolume] = useState('mid');
       const [force, setForce] = useState(20);
@@ -73,14 +70,24 @@
         let basePos = 80; 
         if (lungVolume === 'high') basePos += 15;
         if (lungVolume === 'low') basePos -= 30; 
+        
+        basePos += (pep * 2.5);
 
+        // Nén ép (Compression)
+        if (compression) {
+          basePos -= 25;
+          // Chặn tác động của nén ép thụ động tại mốc sụn (pos = 50)
+          if (basePos < 50) {
+            basePos = 50;
+          }
+        }
+
+        // Lực thở ra (Expiratory Force) - Quyết định việc EPP tiến sâu vào vùng không sụn
         let forceEffect = force * 0.4;
         if (copdLevel === 'mild') forceEffect = force * 0.55; 
         if (copdLevel === 'severe') forceEffect = force * 0.7; 
+        
         basePos -= forceEffect;
-
-        if (compression) basePos -= 25;
-        basePos += (pep * 2.5);
 
         let finalPos = Math.max(10, Math.min(95, basePos));
 
@@ -130,28 +137,53 @@
         const baseRadius = 40;
         
         let narrowedRadius = baseRadius; 
+        let mouthRadius = baseRadius; // Bổ sung thông số cho phần miệng (phần gần)
+
+        // Khi thở ra, phần gần (miệng) sẽ nhỏ hơn phần xa (phế nang)
         if (force > 0 || breathPhase === 'exhale') {
-          narrowedRadius = baseRadius * 0.4;
-          if (eppLogic.isCollapsed) narrowedRadius = 2;
+          narrowedRadius = baseRadius * 0.35; // Thắt nút nhất tại EPP
+          mouthRadius = baseRadius * 0.65;    // Phần gần hẹp lại do chịu áp suất xuyên thành âm
+          if (eppLogic.isCollapsed) {
+            narrowedRadius = 2; // Điểm EPP sập hoàn toàn
+            mouthRadius = 12;   // Đoạn gần miệng cũng bị xẹp theo
+          }
         }
         
         const pathStyle = { transition: 'all 1s ease-in-out' };
         
+        // Đường viền trên
         const topPath = `M ${alveolusX} ${centerY - baseRadius} 
                          C ${eppX - 50} ${centerY - baseRadius}, 
                            ${eppX - 30} ${centerY - narrowedRadius}, 
                            ${eppX} ${centerY - narrowedRadius}
-                         C ${eppX + 30} ${centerY - narrowedRadius}, 
-                           ${eppX + 50} ${centerY - baseRadius}, 
-                           ${mouthX} ${centerY - baseRadius}`;
+                         C ${eppX + 50} ${centerY - narrowedRadius}, 
+                           ${mouthX - 100} ${centerY - mouthRadius}, 
+                           ${mouthX} ${centerY - mouthRadius}`;
 
+        // Đường viền dưới
         const bottomPath = `M ${alveolusX} ${centerY + baseRadius} 
                              C ${eppX - 50} ${centerY + baseRadius}, 
                                ${eppX - 30} ${centerY + narrowedRadius}, 
                                ${eppX} ${centerY + narrowedRadius}
-                             C ${eppX + 30} ${centerY + narrowedRadius}, 
-                               ${eppX + 50} ${centerY + baseRadius}, 
-                               ${mouthX} ${centerY + baseRadius}`;
+                             C ${eppX + 50} ${centerY + narrowedRadius}, 
+                               ${mouthX - 100} ${centerY + mouthRadius}, 
+                               ${mouthX} ${centerY + mouthRadius}`;
+
+        // Lớp nền tô màu khép kín 100% để tránh lỗi render chéo góc của fill="nonzero"
+        const fillPath = `M ${alveolusX} ${centerY - baseRadius} 
+                          C ${eppX - 50} ${centerY - baseRadius}, 
+                            ${eppX - 30} ${centerY - narrowedRadius}, 
+                            ${eppX} ${centerY - narrowedRadius}
+                          C ${eppX + 50} ${centerY - narrowedRadius}, 
+                            ${mouthX - 100} ${centerY - mouthRadius}, 
+                            ${mouthX} ${centerY - mouthRadius}
+                          L ${mouthX} ${centerY + mouthRadius}
+                          C ${mouthX - 100} ${centerY + mouthRadius}, 
+                            ${eppX + 50} ${centerY + narrowedRadius}, 
+                            ${eppX} ${centerY + narrowedRadius}
+                          C ${eppX - 30} ${centerY + narrowedRadius}, 
+                            ${eppX - 50} ${centerY + baseRadius}, 
+                            ${alveolusX} ${centerY + baseRadius} Z`;
 
         return (
           <g>
@@ -167,7 +199,7 @@
 
             <path d={topPath} fill="none" stroke={copdLevel !== 'none' ? "#d97706" : "#64748b"} strokeWidth={copdLevel !== 'none' ? "4" : "8"} style={pathStyle} />
             <path d={bottomPath} fill="none" stroke={copdLevel !== 'none' ? "#d97706" : "#64748b"} strokeWidth={copdLevel !== 'none' ? "4" : "8"} style={pathStyle} />
-            <path d={`${topPath} L ${mouthX} ${centerY+baseRadius} ${bottomPath.replace('M', 'L')} Z`} fill="#f1f5f9" style={pathStyle} />
+            <path d={fillPath} fill="#f1f5f9" style={pathStyle} />
 
             <line x1="400" y1="50" x2="400" y2="250" stroke="#cbd5e1" strokeWidth="2" strokeDasharray="5,5" />
             <text x="250" y="240" textAnchor="middle" fill="#64748b" fontSize="12">Đường thở nhỏ (Không sụn)</text>
@@ -201,8 +233,9 @@
               <g>
                 {eppLogic.clearanceEffect === 'high' ? (
                   <g stroke="#0ea5e9" strokeWidth="2" fill="none" opacity="0.6">
-                    <path d={`M ${eppX-20} ${centerY} Q ${eppX+30} ${centerY-40} ${eppX+60} ${centerY} T ${eppX+140} ${centerY}`} className="animate-pulse" />
-                    <path d={`M ${eppX-20} ${centerY} Q ${eppX+30} ${centerY+40} ${eppX+60} ${centerY} T ${eppX+140} ${centerY}`} className="animate-pulse" />
+                    {/* Chỉnh lại biên độ rung để khớp với khẩu kính nhỏ hơn */}
+                    <path d={`M ${eppX-20} ${centerY} Q ${eppX+20} ${centerY-15} ${eppX+50} ${centerY} T ${eppX+120} ${centerY}`} className="animate-pulse" />
+                    <path d={`M ${eppX-20} ${centerY} Q ${eppX+20} ${centerY+15} ${eppX+50} ${centerY} T ${eppX+120} ${centerY}`} className="animate-pulse" />
                     <text x={eppX+40} y={centerY-20} fill="#0ea5e9" fontSize="12" fontWeight="bold">LỰC XÉ (SHEAR FORCE) BÓC ĐÀM!</text>
                   </g>
                 ) : (
@@ -235,7 +268,6 @@
         <div className="min-h-screen p-4 md:p-6 font-sans text-slate-800 flex justify-center">
           <div className="max-w-[1200px] w-full space-y-6">
             
-            {/* --- HEADER --- */}
             <div className="bg-slate-800 p-5 rounded-2xl text-white flex items-center justify-between shadow-md">
               <div>
                 <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -246,10 +278,7 @@
               <Activity size={40} className="text-slate-600 opacity-50 hidden md:block" />
             </div>
 
-            {/* --- KHU VỰC TRUNG TÂM: MÔ PHỎNG & NÚT BẤM --- */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col">
-              
-              {/* Animation SVG */}
               <div className="relative border-b border-slate-100 bg-slate-50 min-h-[350px] flex items-center justify-center overflow-x-auto p-4">
                 <div className="absolute top-4 left-1/2 -translate-x-1/2 flex gap-2 font-bold px-4 py-2 rounded-full shadow-sm z-10 transition-colors duration-500 bg-white border border-slate-200">
                   {breathPhase === 'inhale' && <span className="text-blue-500 flex items-center gap-2"><Wind className="animate-pulse" size={18}/> ĐANG HÍT VÀO... (Đường thở mở rộng)</span>}
@@ -273,7 +302,6 @@
                 </svg>
               </div>
 
-              {/* Nút bấm liền kề dưới hình */}
               <div className="p-4 grid grid-cols-2 gap-4 bg-white">
                 <button onClick={triggerInhale} className={`py-4 rounded-xl font-bold flex flex-row items-center justify-center gap-2 transition-all text-lg ${breathPhase === 'inhale' ? 'bg-blue-100 text-blue-700 border-2 border-blue-400 shadow-inner' : 'bg-slate-50 text-slate-500 border border-slate-200 hover:bg-blue-50 hover:text-blue-600'}`}>
                   <Wind size={24} />
@@ -286,10 +314,7 @@
               </div>
             </div>
 
-            {/* --- KHU VỰC CÀI ĐẶT & BÁO CÁO (CHIA 3 CỘT GỌN GÀNG) --- */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              
-              {/* CỘT 1: Cài đặt thông số bệnh nhân */}
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col gap-6">
                 <div>
                   <label className="block text-sm font-bold mb-3 text-slate-800 flex items-center gap-2">Phân loại</label>
@@ -316,7 +341,7 @@
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-2 text-slate-700">Thể tích phổi (Áp lực phế nang thì thở ra)</label>
+                  <label className="block text-sm font-medium mb-2 text-slate-700">1. Thể tích phổi (Áp lực phế nang thì thở ra)</label>
                   <div className="flex gap-2">
                     {['low', 'mid', 'high'].map((vol) => (
                       <button key={vol} onClick={() => { setBreathPhase('exhale'); setLungVolume(vol); }} className={`flex-1 py-2 text-sm rounded-md border transition-colors ${lungVolume === vol ? 'bg-blue-100 border-blue-400 text-blue-700 font-semibold' : 'bg-white border-slate-300 text-slate-600 hover:bg-slate-50'}`}>
@@ -327,11 +352,10 @@
                 </div>
               </div>
 
-              {/* CỘT 2: Can thiệp động lực học */}
               <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col gap-6">
                 <div>
                   <label className="block text-sm font-medium mb-2 text-slate-700 flex justify-between">
-                    <span>Mức độ gắng sức</span>
+                    <span>2. Lực thở ra</span>
                     <span className="text-blue-600 font-bold">{force}%</span>
                   </label>
                   <input type="range" min="0" max="100" value={force} onChange={(e) => { setBreathPhase('exhale'); setForce(Number(e.target.value)); }} className="w-full accent-blue-600" />
@@ -353,9 +377,7 @@
                 </div>
               </div>
 
-              {/* CỘT 3: Biểu đồ & Phân tích */}
               <div className="flex flex-col gap-4">
-                {/* Biểu đồ Thể tích Phổi */}
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                   <h3 className="text-sm font-bold text-slate-800 mb-4 flex items-center justify-center gap-2">
                     <Activity size={16} className="text-blue-500" /> Biểu đồ Thể tích Phổi
@@ -378,7 +400,6 @@
                   </div>
                 </div>
 
-                {/* Phân tích Lâm sàng */}
                 <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex-1">
                   <h3 className="text-sm font-bold mb-3 flex items-center gap-2 text-slate-800">
                     <Info className="text-blue-500" size={18} /> Phân tích Lâm sàng (Thì Thở Ra):
@@ -397,7 +418,7 @@
                               <h4 className="font-bold text-red-900 text-xs">CẢNH BÁO: ĐÓNG SẬP ĐƯỜNG THỞ</h4>
                               <p className="text-[11px] text-red-800 mt-1">
                                 Ở bệnh nhân <strong>{copdLevel === 'mild' ? 'COPD Nhẹ' : 'COPD Nặng'}</strong>, sự kết hợp giữa "lực đẩy ra" yếu và "lực cản đường" lớn khiến EPP trượt nhanh về phía phế nang. 
-                                {copdLevel === 'severe' ? ' Do mức độ nặng, chỉ cần một nỗ lực thở ra nhỏ cũng đủ khiến áp lực màng phổi đè sập đường thở.' : ' Ở mức độ nhẹ, cần phải gắng sức mạnh mới xảy ra hiện tượng sập.'}
+                                {copdLevel === 'severe' ? ' Do mức độ nặng, chỉ cần một nỗ lực thở ra nhỏ cũng đủ khiến áp lực màng phổi đè sập đường thở.' : ' Ở mức độ nhẹ, cần phải có lực thở ra mạnh mới xảy ra hiện tượng sập.'}
                                 <strong> Khí bị bẫy lại bên trong, gây quá căng lồng ngực.</strong>
                               </p>
                               <div className="mt-1 text-[11px] font-semibold text-red-900 flex items-center gap-1">
